@@ -688,7 +688,11 @@ impl AppState {
         let mut handled = true;
         if self.process_clean_key(key, window, &mut tree_view, config)? {
             self.pending_exit = false;
-        } else if keys.esc_navigates_back && close_pane && self.focussed == Main {
+        } else if keys.esc_navigates_back
+            && (close_pane || quit)
+            && self.focussed == Main
+            && self.glob_navigation.is_none()
+        {
             self.pending_exit = false;
             self.exit_node_with_traversal(&tree_view, &keys.scan_parent.primary());
         } else if close_pane || quit {

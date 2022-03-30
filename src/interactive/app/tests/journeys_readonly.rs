@@ -838,7 +838,7 @@ fn once_allows_replayed_quit_to_exit() -> Result<()> {
     let (mut terminal, mut app) = untraversed_app_and_terminal_from_fixture(&["sample-01"])?;
     app.traverse()?;
 
-    let result = app.process_events_once(&mut terminal, into_codes("q"))?;
+    let result = app.process_events_once(&mut terminal, into_codes("Q"))?;
 
     assert_eq!(result.num_errors, 0);
 
@@ -1031,8 +1031,8 @@ fn quit_instantly_when_nothing_marked() -> Result<()> {
     let short_root = "sample-01";
     let (mut terminal, mut app) = initialized_app_and_terminal_from_fixture(&[short_root])?;
 
-    // When pressing 'q' without any items marked for deletion
-    let result = app.process_events(&mut terminal, into_codes("q"))?;
+    // When pressing 'Q' without any items marked for deletion
+    let result = app.process_events(&mut terminal, into_codes("Q"))?;
 
     assert_eq!(
         result.num_errors, 0,
@@ -1043,7 +1043,7 @@ fn quit_instantly_when_nothing_marked() -> Result<()> {
 }
 
 #[test]
-fn quit_requires_two_presses_when_items_marked() -> Result<()> {
+fn q_ascends_and_Q_quits_when_items_marked() -> Result<()> {
     let short_root = "sample-01";
     let (mut terminal, mut app) = initialized_app_and_terminal_from_fixture(&[short_root])?;
 
@@ -1056,20 +1056,20 @@ fn quit_requires_two_presses_when_items_marked() -> Result<()> {
         "expecting one marked item"
     );
 
-    // First 'q' press should set pending_exit
+    // 'q' ascends one level instead of requesting quit
     app.process_events(&mut terminal, into_codes("q"))?;
 
     assert!(
-        app.state.pending_exit,
-        "first 'q' should set pending_exit when items are marked"
+        !app.state.pending_exit,
+        "'q' should not request quit when items are marked"
     );
 
-    // Second 'q' press should quit
-    let result = app.process_events(&mut terminal, into_codes("q"))?;
+    // 'Q' quits immediately even with items marked
+    let result = app.process_events(&mut terminal, into_codes("Q"))?;
 
     assert_eq!(
         result.num_errors, 0,
-        "second 'q' should quit the application"
+        "'Q' should quit the application immediately"
     );
 
     Ok(())
