@@ -92,15 +92,18 @@ impl AppState {
                 }
                 Char('q') | Esc => match self.focussed {
                     Main => {
-                        return Ok(ProcessingResult::ExitRequested(WalkResult {
-                            num_errors: traversal.io_errors,
-                        }))
+                        self.exit_node_with_traversal(traversal)
                     }
                     Mark => self.focussed = Main,
                     Help => {
                         self.focussed = Main;
                         window.help_pane = None
                     }
+                },
+                Char('Q') => {
+                        return Ok(ProcessingResult::ExitRequested(WalkResult {
+                            num_errors: traversal.io_errors,
+                        }))
                 },
                 _ => {}
             }
