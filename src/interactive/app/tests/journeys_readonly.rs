@@ -1115,6 +1115,25 @@ fn export_snapshot_key_writes_cache_file() -> Result<()> {
 }
 
 #[test]
+fn export_snapshot_names_file_after_scanned_directory_not_expanded_entries() -> Result<()> {
+    let cache_dir = tempfile::tempdir()?;
+    let (mut terminal, mut app) = initialized_app_and_terminal_from_fixture(&["sample-01"])?;
+    app.state.snapshot_cache_dir = cache_dir.path().to_path_buf();
+    // `dua` without explicit inputs expands `root_paths` to the entries of the scanned
+    // directory; the cache file must be named after that directory instead.
+    app.state.root_path = Some(fixture("sample-01"));
+    app.process_events(&mut terminal, into_codes("E"))?;
+
+    let files: Vec<_> = fs::read_dir(cache_dir.path())?
+        .map(|entry| entry.expect("cache dir entry").file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(files.len(), 1);
+    let name = files[0].to_string_lossy().into_owned();
+    assert!(name.starts_with("tests-fixtures-sample-01_"), "{name}");
+    Ok(())
+}
+
+#[test]
 fn export_snapshot_key_is_blocked_while_scanning() -> Result<()> {
     let cache_dir = tempfile::tempdir()?;
     let (mut terminal, mut app) = untraversed_app_and_terminal_from_fixture(&["sample-01"])?;

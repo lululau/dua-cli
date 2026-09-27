@@ -175,7 +175,12 @@ impl AppState {
         let dir = &self.snapshot_cache_dir;
         std::fs::create_dir_all(dir)
             .with_context(|| format!("could not create {}", dir.display()))?;
-        let stem = snapshot_cache_stem(&self.root_paths);
+        // `root_paths` may hold the expanded entries of the scanned directory when dua was
+        // started without explicit inputs; name the file after the directory itself then.
+        let stem = match &self.root_path {
+            Some(dir) => snapshot_cache_stem(std::slice::from_ref(dir)),
+            None => snapshot_cache_stem(&self.root_paths),
+        };
         let timestamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S").to_string();
         let name = snapshot_cache_file_name(&stem, &timestamp, dir);
         let path = dir.join(name);
