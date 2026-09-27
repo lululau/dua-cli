@@ -389,7 +389,15 @@ mod tests {
         focused: FocussedPane,
         config: &dua::Config,
     ) -> Buffer {
-        let mut state = AppState::new(crate::snapshot_walk_options(), Vec::new(), None, false);
+        let mut state = AppState::new(
+            crate::snapshot_walk_options(),
+            Vec::new(),
+            None,
+            false,
+            None,
+            std::env::temp_dir(),
+            None,
+        );
         state.language = language;
         state.received_events = true;
         state.focussed = focused;

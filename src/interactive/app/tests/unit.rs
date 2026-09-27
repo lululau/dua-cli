@@ -212,6 +212,9 @@ fn it_can_sort_directory_mtimes_by_recursive_entries() {
         Vec::new(),
         None,
         false,
+        None,
+        std::env::temp_dir(),
+        None,
     );
     state.navigation.view_root = root;
     state.sorting = SortMode::MTimeDescending(MTimeSort::Entry);

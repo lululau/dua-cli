@@ -219,6 +219,9 @@ pub fn untraversed_app_and_terminal_with_closure(
         Config::default(),
         dua::traverse::Traversal::new(),
         None,
+        None,
+        std::env::temp_dir(),
+        None,
     )?;
     app.state.language = Language::English;
 

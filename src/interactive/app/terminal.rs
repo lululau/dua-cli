@@ -87,6 +87,9 @@ impl TerminalApp {
         config: Config,
         mut traversal: Traversal,
         snapshot_load_duration: Option<Duration>,
+        snapshot_write_back: Option<(PathBuf, Option<i32>)>,
+        snapshot_cache_dir: PathBuf,
+        snapshot_compression: Option<i32>,
     ) -> Result<TerminalApp>
     where
         B: Backend,
@@ -102,7 +105,15 @@ impl TerminalApp {
         let window = MainWindow::default();
 
         let read_only = snapshot_load_duration.is_some();
-        let mut state = AppState::new(walk_options, input, root_path, read_only);
+        let mut state = AppState::new(
+            walk_options,
+            input,
+            root_path,
+            read_only,
+            snapshot_write_back,
+            snapshot_cache_dir,
+            snapshot_compression,
+        );
         if config.gitignore == Some(false) {
             state.gitignored_entries = None;
         }
@@ -261,11 +272,106 @@ pub(super) fn write_snapshot_atomically(
     Ok(())
 }
 
+/// Resolve the snapshot cache directory from `DUA_SNAPSHOT_DIR`, defaulting to
+/// `~/.cache/dua/snapshots`.
+pub fn snapshot_cache_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("DUA_SNAPSHOT_DIR") {
+        return PathBuf::from(dir);
+    }
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".cache")
+        .join("dua")
+        .join("snapshots")
+}
+
+/// Longest sanitized root-path portion of a cache snapshot file name; the timestamp suffix
+/// and extension must still fit into common 255-byte file-name limits.
+const SNAPSHOT_STEM_MAX_CHARS: usize = 160;
+
+/// Turn the traversal's root paths into a file-name-safe stem: path separators become `-`,
+/// multiple roots are joined with `-`, and overly long stems keep their most distinctive tail.
+pub(super) fn snapshot_cache_stem(roots: &[PathBuf]) -> String {
+    let mut stem = roots
+        .iter()
+        .map(|path| {
+            path.components()
+                .filter_map(|component| match component {
+                    std::path::Component::Normal(part) => Some(
+                        part.to_string_lossy()
+                            .replace(['/', '\\', ' '], "-")
+                            .trim_matches('-')
+                            .to_string(),
+                    ),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("-")
+        })
+        .collect::<Vec<_>>()
+        .join("-");
+    if stem.chars().count() > SNAPSHOT_STEM_MAX_CHARS {
+        stem = stem
+            .chars()
+            .skip(stem.chars().count() - SNAPSHOT_STEM_MAX_CHARS)
+            .collect();
+    }
+    stem
+}
+
+/// Build the cache snapshot file name `<stem>_<YYYYMMDD-HHMMSS>.snap`, appending `-N` when a
+/// file with the same name already exists.
+pub(super) fn snapshot_cache_file_name(stem: &str, timestamp: &str, dir: &Path) -> String {
+    let base = format!("{stem}_{timestamp}");
+    if !dir.join(format!("{base}.snap")).exists() {
+        return format!("{base}.snap");
+    }
+    (1..100)
+        .map(|n| format!("{base}-{n}.snap"))
+        .find(|name| !dir.join(name).exists())
+        .unwrap_or_else(|| format!("{base}-0.snap"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use super::TerminalApp;
+
+    #[test]
+    fn snapshot_cache_stem_sanitizes_root_paths() {
+        assert_eq!(
+            snapshot_cache_stem(&[PathBuf::from("/tmp/some dir/x")]),
+            "tmp-some-dir-x"
+        );
+        assert_eq!(
+            snapshot_cache_stem(&[PathBuf::from("relative/path")]),
+            "relative-path"
+        );
+        assert_eq!(
+            snapshot_cache_stem(&[PathBuf::from("/a/b"), PathBuf::from("c/d")]),
+            "a-b-c-d"
+        );
+    }
+
+    #[test]
+    fn snapshot_cache_stem_keeps_its_distinctive_tail_when_too_long() {
+        let long = "x".repeat(300);
+        let stem = snapshot_cache_stem(&[PathBuf::from(format!("/prefix/{long}"))]);
+        assert_eq!(stem.chars().count(), SNAPSHOT_STEM_MAX_CHARS);
+        assert!(stem.ends_with(&long[..80]), "the tail is preserved");
+    }
+
+    #[test]
+    fn snapshot_cache_file_name_appends_counter_on_collision() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let timestamp = "20260927-150101";
+        let first = snapshot_cache_file_name("stem", timestamp, dir.path());
+        assert_eq!(first, "stem_20260927-150101.snap");
+        std::fs::write(dir.path().join(first), b"").expect("seed collision");
+        let second = snapshot_cache_file_name("stem", timestamp, dir.path());
+        assert_eq!(second, "stem_20260927-150101-1.snap");
+    }
 
     impl TerminalApp {
         pub fn run_until_traversed<B>(

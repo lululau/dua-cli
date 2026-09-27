@@ -229,6 +229,11 @@ impl HelpPane {
                 hotkey(keys.suspend.to_string(), t.app_suspend, None);
                 hotkey(keys.repaint.to_string(), t.app_repaint, None);
                 hotkey(keys.quit_immediately.to_string(), t.app_quit, None);
+                hotkey(
+                    keys.export_snapshot.to_string(),
+                    t.app_export_snapshot,
+                    None,
+                );
                 spacer();
             }
             lines.into_inner()

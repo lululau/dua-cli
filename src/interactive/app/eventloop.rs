@@ -25,7 +25,7 @@ use super::notification;
 use super::state::{AppState, Cursor};
 #[cfg(unix)]
 use super::terminal::suspend_terminal;
-use super::terminal::write_snapshot_atomically;
+use super::terminal::{snapshot_cache_file_name, snapshot_cache_stem, write_snapshot_atomically};
 use super::tree_view::TreeView;
 
 /// Information needed to extend the traversal one directory upward:
@@ -122,6 +122,72 @@ impl AppState {
             snapshot_export,
         });
         Ok(())
+    }
+
+    /// Restart a full traversal from the imported snapshot's original roots, replacing the
+    /// loaded tree; the scan-completion hook overwrites the snapshot file afterwards.
+    pub(super) fn rescan_snapshot(
+        &mut self,
+        tree: &mut TreeView<'_>,
+        window: &mut MainWindow,
+    ) -> Result<()> {
+        if self.is_deleting() {
+            self.message = Some(self.language.ui_text().deletion_running.into());
+            return Ok(());
+        }
+        if self.scan.is_some() {
+            self.message = Some(self.language.ui_text().traversal_running.into());
+            return Ok(());
+        }
+        // Leave snapshot mode: the fresh traversal is live, so entry checks apply again. The
+        // placeholder walk options of an import carry a single thread; restore full parallelism.
+        self.read_only = false;
+        self.allow_entry_check = true;
+        self.walk_options.threads = num_cpus::get();
+        self.glob_navigation = None;
+        window.glob = None;
+        tree.glob_tree_root.take();
+        self.navigation = Navigation::default();
+        self.entries.clear();
+        *tree.traversal = Traversal::new();
+        self.traverse(tree.traversal, None)
+    }
+
+    /// Write the current traversal into the snapshot cache directory and report the destination.
+    pub(super) fn export_snapshot_to_cache(&mut self, tree: &TreeView<'_>) {
+        let t = self.language.ui_text();
+        if self.scan.is_some() {
+            self.message = Some(t.snapshot_export_scan_running.into());
+            return;
+        }
+        if self.is_deleting() {
+            self.message = Some(t.deletion_running.into());
+            return;
+        }
+        let exported = self.write_cache_snapshot(&*tree.traversal);
+        self.message = Some(match exported {
+            Ok(path) => format!("{}{}", t.snapshot_exported_to, path.display()),
+            Err(err) => format!("{}{err:#}", t.snapshot_export_failed),
+        });
+    }
+
+    fn write_cache_snapshot(&self, traversal: &Traversal) -> Result<PathBuf> {
+        let dir = &self.snapshot_cache_dir;
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("could not create {}", dir.display()))?;
+        let stem = snapshot_cache_stem(&self.root_paths);
+        let timestamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S").to_string();
+        let name = snapshot_cache_file_name(&stem, &timestamp, dir);
+        let path = dir.join(name);
+        let roots: Vec<_> = traversal.tree.children(traversal.root_index).collect();
+        write_snapshot_atomically(
+            &path,
+            traversal,
+            &roots,
+            self.snapshot_compression,
+            self.language,
+        )?;
+        Ok(path)
     }
 
     pub(super) fn can_scan_parent(&self, tree: &TreeView<'_>) -> bool {
@@ -520,6 +586,7 @@ impl AppState {
                         self.stats = active_traversal.stats;
                         let previous_selection = previous_selection.clone();
                         let previous_cleanup_view = previous_cleanup_view.clone();
+                        let mut write_back_message = None;
                         if is_finished {
                             let root_index = active_traversal.root_idx;
                             let export = snapshot_export
@@ -543,6 +610,30 @@ impl AppState {
                                     self.language,
                                 )?;
                             }
+                            if let Some((path, compression_level)) = self.snapshot_write_back.take()
+                            {
+                                let t = self.language.ui_text();
+                                let roots: Vec<_> =
+                                    traversal.tree.children(traversal.root_index).collect();
+                                let written =
+                                    write_snapshot_atomically(
+                                        &path,
+                                        traversal,
+                                        &roots,
+                                        compression_level,
+                                        self.language,
+                                    );
+                                // Assigned below, past the update that forces the scanning
+                                // message, so the outcome stays visible in the footer.
+                                write_back_message = Some(match written {
+                                    Ok(()) => {
+                                        format!("{}{}", t.snapshot_written_back, path.display())
+                                    }
+                                    Err(err) => {
+                                        format!("{}{err:#}", t.snapshot_write_back_failed)
+                                    }
+                                });
+                            }
                             self.scan = None;
                             traversal.cost = Some(traversal.start_time.elapsed());
                         }
@@ -562,6 +653,9 @@ impl AppState {
                             }
                         }
                         self.update_state_during_traversal(traversal, previous_selection.as_ref(), is_finished);
+                        if let Some(message) = write_back_message {
+                            self.message = Some(message);
+                        }
                         self.refresh_screen(window, traversal, display, terminal, config)?;
                         if is_finished {
                             let message = notification::scan_finished(
@@ -793,7 +887,13 @@ impl AppState {
                     } else if keys.refresh_selected.matches(key) {
                         self.refresh(&mut tree_view, window, Refresh::Selected)?;
                     } else if keys.refresh_all.matches(key) {
-                        self.refresh(&mut tree_view, window, Refresh::AllInView)?;
+                        if self.read_only && self.snapshot_write_back.is_some() {
+                            self.rescan_snapshot(&mut tree_view, window)?;
+                        } else {
+                            self.refresh(&mut tree_view, window, Refresh::AllInView)?;
+                        }
+                    } else if keys.export_snapshot.matches(key) {
+                        self.export_snapshot_to_cache(&tree_view);
                     } else if let Some(direction) = CursorDirection::from_key(key, keys) {
                         self.change_entry_selection(direction);
                     } else if keys.sort_by_size.matches(key) {

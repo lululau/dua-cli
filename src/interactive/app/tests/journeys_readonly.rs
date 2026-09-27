@@ -913,6 +913,9 @@ fn snapshot_roundtrip_is_read_only() -> Result<()> {
         Config::default(),
         snapshot.traversal,
         Some(snapshot_load_duration),
+        None,
+        std::env::temp_dir(),
+        None,
     )?;
     app.state.language = Language::English;
 
@@ -1043,7 +1046,7 @@ fn quit_instantly_when_nothing_marked() -> Result<()> {
 }
 
 #[test]
-fn q_ascends_and_Q_quits_when_items_marked() -> Result<()> {
+fn q_ascends_and_uppercase_q_quits_when_items_marked() -> Result<()> {
     let short_root = "sample-01";
     let (mut terminal, mut app) = initialized_app_and_terminal_from_fixture(&[short_root])?;
 
@@ -1072,5 +1075,154 @@ fn q_ascends_and_Q_quits_when_items_marked() -> Result<()> {
         "'Q' should quit the application immediately"
     );
 
+    Ok(())
+}
+
+#[test]
+fn export_snapshot_key_writes_cache_file() -> Result<()> {
+    let cache_dir = tempfile::tempdir()?;
+    let (mut terminal, mut app) = initialized_app_and_terminal_from_fixture(&["sample-01"])?;
+    app.state.snapshot_cache_dir = cache_dir.path().to_path_buf();
+    app.process_events(&mut terminal, into_codes("E"))?;
+
+    let message = app.state.message.as_deref().expect("export message");
+    assert!(message.contains("Snapshot exported to "), "{message}");
+
+    let mut files: Vec<_> = std::fs::read_dir(cache_dir.path())?
+        .map(|entry| entry.expect("cache dir entry").file_name())
+        .collect::<Vec<_>>();
+    files.sort();
+    assert_eq!(files.len(), 1, "exactly one cached snapshot");
+    let name = files[0].to_string_lossy();
+    assert!(name.ends_with(".snap"), "{name}");
+    assert!(
+        name.starts_with("tests-fixtures-sample-01_"),
+        "file name carries the sanitized root path: {name}"
+    );
+    let stem_end = name.len() - ".snap".len();
+    let timestamp = &name[stem_end - 16..stem_end];
+    assert_eq!(timestamp.as_bytes()[0], b'_');
+    assert!(
+        timestamp[1..]
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '-'),
+        "timestamp shape YYYYMMDD-HHMMSS: {timestamp}"
+    );
+
+    let snapshot = dua::snapshot::read(fs::File::open(cache_dir.path().join(&*name))?)?;
+    assert!(!snapshot.roots.is_empty());
+    Ok(())
+}
+
+#[test]
+fn export_snapshot_key_is_blocked_while_scanning() -> Result<()> {
+    let cache_dir = tempfile::tempdir()?;
+    let (mut terminal, mut app) = untraversed_app_and_terminal_from_fixture(&["sample-01"])?;
+    app.state.snapshot_cache_dir = cache_dir.path().to_path_buf();
+    app.traverse()?;
+    app.process_events(&mut terminal, into_codes("E"))?;
+
+    let message = app.state.message.as_deref().expect("guard message");
+    assert!(
+        message.contains("Cannot export a snapshot while a traversal is running"),
+        "{message}"
+    );
+    assert_eq!(
+        fs::read_dir(cache_dir.path())?.count(),
+        0,
+        "no snapshot is written while scanning"
+    );
+
+    let (_key_send, key_receive) = crossbeam::channel::bounded(0);
+    app.run_until_traversed(&mut terminal, key_receive)?;
+    Ok(())
+}
+
+#[test]
+fn rescan_from_snapshot_writes_fresh_results_back() -> Result<()> {
+    use crate::interactive::terminal::TerminalApp;
+    use dua::{ByteFormat, Config};
+
+    let fixture = tempfile::tempdir()?;
+    let root = fixture.path().join("root");
+    fs::create_dir(&root)?;
+    fs::write(root.join("a"), b"old-content")?;
+    let snapshot_dir = tempfile::tempdir()?;
+    let snapshot_path = snapshot_dir.path().join("scan.dua");
+
+    let (mut terminal, mut scanned) = untraversed_app_and_terminal_with_closure(
+        std::slice::from_ref(&root),
+        std::path::Path::to_path_buf,
+    )?;
+    scanned.traverse_and_export(snapshot_path.clone(), Some(2))?;
+    scanned.run_until_traversed(&mut terminal, into_events([]))?;
+
+    fs::write(root.join("b"), b"brand-new-file")?;
+
+    let snapshot = dua::snapshot::read(fs::File::open(&snapshot_path)?)?;
+    let root_paths = snapshot
+        .roots
+        .iter()
+        .map(|root| {
+            std::path::absolute(
+                snapshot
+                    .traversal
+                    .tree
+                    .name(*root)
+                    .expect("snapshot root exists"),
+            )
+            .expect("absolute root path")
+        })
+        .collect::<Vec<_>>();
+    let mut terminal = new_test_terminal()?;
+    let mut app = TerminalApp::initialize(
+        &mut terminal,
+        scanned.state.walk_options.clone(),
+        ByteFormat::Metric,
+        true,
+        root_paths,
+        None,
+        Config::default(),
+        snapshot.traversal,
+        Some(Duration::from_millis(123)),
+        Some((snapshot_path.clone(), Some(2))),
+        std::env::temp_dir(),
+        None,
+    )?;
+    app.state.language = Language::English;
+
+    assert!(app.state.read_only);
+    app.process_events(&mut terminal, into_codes("R"))?;
+    assert!(app.state.scan.is_some(), "R starts a fresh traversal");
+    let (_key_send, key_receive) = crossbeam::channel::bounded(0);
+    app.run_until_traversed(&mut terminal, key_receive)?;
+
+    assert!(!app.state.read_only, "rescan leaves snapshot mode");
+    assert_eq!(
+        app.state.snapshot_write_back, None,
+        "the write-back target is consumed once"
+    );
+    let message = app.state.message.as_deref().expect("write-back message");
+    assert!(message.contains("Snapshot updated"), "{message}");
+
+    let rescan = dua::snapshot::read(fs::File::open(&snapshot_path)?)?;
+    let names: Vec<String> = rescan
+        .roots
+        .iter()
+        .flat_map(|root| rescan.traversal.tree.children(*root))
+        .map(|child| {
+            rescan
+                .traversal
+                .tree
+                .name(child)
+                .expect("child exists")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert!(
+        names.iter().any(|name| name == "b"),
+        "rescan writes entries added after the import back into the snapshot: {names:?}"
+    );
     Ok(())
 }

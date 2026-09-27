@@ -13,7 +13,7 @@ use std::{
 #[cfg(feature = "tui-crossplatform")]
 use crate::interactive::input::{input_channel, input_channel_from_keys};
 #[cfg(feature = "tui-crossplatform")]
-use crate::interactive::terminal::TerminalApp;
+use crate::interactive::terminal::{TerminalApp, snapshot_cache_dir};
 #[cfg(feature = "tui-crossplatform")]
 use crossterm::{
     execute,
@@ -195,14 +195,18 @@ fn main() -> Result<()> {
                         .roots
                         .iter()
                         .map(|root| {
-                            snapshot
+                            let name = snapshot
                                 .traversal
                                 .tree
                                 .name(*root)
                                 .expect("snapshot root exists")
-                                .into_owned()
+                                .into_owned();
+                            // Stored root names are the paths as passed on export; make them
+                            // absolute so `R` can rescan them from any working directory.
+                            std::path::absolute(name)
+                                .with_context(|| "Could not resolve snapshot input path")
                         })
-                        .collect();
+                        .collect::<Result<Vec<_>>>()?;
                     (
                         input_paths,
                         snapshot.traversal,
@@ -260,6 +264,10 @@ fn main() -> Result<()> {
             let mut terminal = Terminal::new(CrosstermBackend::new(stderr))
                 .with_context(|| "Could not instantiate terminal")?;
 
+            let snapshot_write_back = import
+                .map(std::path::absolute)
+                .transpose()?
+                .map(|path| (path, (compression != 0).then_some(compression)));
             let mut app = TerminalApp::initialize(
                 &mut terminal,
                 walk_options,
@@ -270,6 +278,9 @@ fn main() -> Result<()> {
                 config,
                 initial_traversal,
                 snapshot_load_duration,
+                snapshot_write_back,
+                snapshot_cache_dir(),
+                (compression != 0).then_some(compression),
             )?;
             if let Some(depth) = clean_depth {
                 app.traverse_clean(depth)?;

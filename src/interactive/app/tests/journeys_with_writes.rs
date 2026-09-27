@@ -247,6 +247,9 @@ $precious.tmp
         Config::default(),
         dua::traverse::Traversal::new(),
         None,
+        None,
+        std::env::temp_dir(),
+        None,
     )?;
     app.state.language = Language::English;
     app.traverse()?;
@@ -388,6 +391,9 @@ fn cleanup_candidates_are_marked_with_one_key_after_entering_project_dir() -> Re
         None,
         Config::default(),
         dua::traverse::Traversal::new(),
+        None,
+        None,
+        std::env::temp_dir(),
         None,
     )?;
     app.state.language = Language::English;

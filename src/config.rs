@@ -505,6 +505,8 @@ pub struct KeysConfig {
     pub refresh_selected: KeyBindings,
     /// Refresh the current view.
     pub refresh_all: KeyBindings,
+    /// Export the current traversal as a snapshot into the snapshot cache directory.
+    pub export_snapshot: KeyBindings,
     /// Remove the selected mark.
     pub remove_mark: KeyBindings,
     /// Remove all marks.
@@ -569,6 +571,7 @@ impl Default for KeysConfig {
             mark_gitignore: KeyBindings::defaults(&["I"]),
             refresh_selected: KeyBindings::defaults(&["r"]),
             refresh_all: KeyBindings::defaults(&["R"]),
+            export_snapshot: KeyBindings::defaults(&["E"]),
             remove_mark: KeyBindings::defaults(&["x", "d", "space"]),
             remove_all_marks: KeyBindings::defaults(&["a"]),
             delete_marked: KeyBindings::defaults(&["ctrl+r"]),
@@ -694,6 +697,7 @@ impl Config {
             "# mark_gitignore = \"I\"\n",
             "# refresh_selected = \"r\"\n",
             "# refresh_all = \"R\"\n",
+            "# export_snapshot = \"E\" # Write a snapshot to the cache directory.\n",
             "#\n",
             "# Marked-items pane.\n",
             "# remove_mark = [\"x\", \"d\", \"space\"]\n",
@@ -775,6 +779,7 @@ mod tests {
             "mark_gitignore",
             "refresh_selected",
             "refresh_all",
+            "export_snapshot",
             "remove_mark",
             "remove_all_marks",
             "delete_marked",

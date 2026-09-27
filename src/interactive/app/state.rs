@@ -87,6 +87,13 @@ pub struct AppState {
     pub allow_entry_check: bool,
     /// Whether this traversal was loaded from a snapshot and must not touch the filesystem.
     pub read_only: bool,
+    /// Imported snapshot to overwrite with a fresh traversal once `R` rescans it, with its
+    /// compression level.
+    pub snapshot_write_back: Option<(PathBuf, Option<i32>)>,
+    /// Directory receiving snapshots exported with `E`.
+    pub snapshot_cache_dir: PathBuf,
+    /// Compression level for snapshots exported with `E`.
+    pub snapshot_compression: Option<i32>,
     /// Whether the next quit/back action should exit the app.
     pub pending_exit: bool,
 }
@@ -97,6 +104,9 @@ impl AppState {
         input: Vec<PathBuf>,
         root_path: Option<PathBuf>,
         read_only: bool,
+        snapshot_write_back: Option<(PathBuf, Option<i32>)>,
+        snapshot_cache_dir: PathBuf,
+        snapshot_compression: Option<i32>,
     ) -> Self {
         AppState {
             language: Language::from_env(),
@@ -120,6 +130,9 @@ impl AppState {
             root_path,
             allow_entry_check: !read_only,
             read_only,
+            snapshot_write_back,
+            snapshot_cache_dir,
+            snapshot_compression,
             pending_exit: false,
         }
     }

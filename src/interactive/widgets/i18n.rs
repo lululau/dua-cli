@@ -162,6 +162,7 @@ pub struct HelpText {
     pub app_suspend: &'static str,
     pub app_repaint: &'static str,
     pub app_quit: &'static str,
+    pub app_export_snapshot: &'static str,
 }
 
 const EN: HelpText = HelpText {
@@ -227,6 +228,7 @@ const EN: HelpText = HelpText {
     app_suspend: "Suspend the application and return control to the shell.",
     app_repaint: "Clear and repaint the screen.",
     app_quit: "Close the application. No questions asked!",
+    app_export_snapshot: "Export the current scan as a snapshot into the cache directory.",
 };
 
 const JA: HelpText = HelpText {
@@ -292,6 +294,7 @@ const JA: HelpText = HelpText {
     app_suspend: "アプリケーションを一時停止してシェルに戻る。",
     app_repaint: "画面を消去して再描画する。",
     app_quit: "アプリケーションを終了する。確認なし！",
+    app_export_snapshot: "現在のスキャンをスナップショットとしてキャッシュディレクトリに書き出す。",
 };
 
 const KO: HelpText = HelpText {
@@ -357,6 +360,7 @@ const KO: HelpText = HelpText {
     app_suspend: "애플리케이션을 일시 중단하고 셸로 제어권을 돌려줍니다.",
     app_repaint: "화면을 지우고 다시 그립니다.",
     app_quit: "애플리케이션을 종료합니다. 확인하지 않습니다!",
+    app_export_snapshot: "현재 스캔을 스냅샷으로 캐시 디렉터리에 내보냅니다.",
 };
 
 const ZH: HelpText = HelpText {
@@ -422,6 +426,7 @@ const ZH: HelpText = HelpText {
     app_suspend: "暂停应用程序并将控制权交还给 shell。",
     app_repaint: "清空并重绘屏幕。",
     app_quit: "直接关闭应用程序，不作确认！",
+    app_export_snapshot: "将当前扫描结果作为快照导出到缓存目录。",
 };
 
 const DE: HelpText = HelpText {
@@ -487,6 +492,7 @@ const DE: HelpText = HelpText {
     app_suspend: "Anwendung anhalten und Steuerung an die Shell zurückgeben.",
     app_repaint: "Bildschirm leeren und neu zeichnen.",
     app_quit: "Anwendung ohne Rückfrage schließen!",
+    app_export_snapshot: "Den aktuellen Scan als Snapshot ins Cache-Verzeichnis exportieren.",
 };
 
 /// Static text used outside the help pane.
@@ -535,6 +541,11 @@ pub struct UiText {
     pub snapshot_temporary_failed: &'static str,
     pub snapshot_write_failed: &'static str,
     pub snapshot_install_failed: &'static str,
+    pub snapshot_exported_to: &'static str,
+    pub snapshot_export_failed: &'static str,
+    pub snapshot_export_scan_running: &'static str,
+    pub snapshot_written_back: &'static str,
+    pub snapshot_write_back_failed: &'static str,
     pub failed_to_open: &'static str,
     pub top_level: &'static str,
     pub entry_file_or_empty: &'static str,
@@ -856,6 +867,11 @@ const EN_UI: UiText = UiText {
     snapshot_temporary_failed: "Could not create a temporary snapshot beside ",
     snapshot_write_failed: "Could not write snapshot to ",
     snapshot_install_failed: "Could not install snapshot at ",
+    snapshot_exported_to: "Snapshot exported to ",
+    snapshot_export_failed: "Could not export snapshot: ",
+    snapshot_export_scan_running: "Cannot export a snapshot while a traversal is running",
+    snapshot_written_back: "Snapshot updated: ",
+    snapshot_write_back_failed: "Could not update snapshot: ",
     failed_to_open: "Failed to open ",
     top_level: "Top level reached",
     entry_file_or_empty: "Entry is a file or an empty directory",
@@ -919,6 +935,11 @@ const JA_UI: UiText = UiText {
     snapshot_temporary_failed: "次の場所に一時スナップショットを作成できませんでした: ",
     snapshot_write_failed: "スナップショットを書き込めませんでした: ",
     snapshot_install_failed: "スナップショットを配置できませんでした: ",
+    snapshot_exported_to: "スナップショットを書き出しました: ",
+    snapshot_export_failed: "スナップショットを書き出せませんでした: ",
+    snapshot_export_scan_running: "トラバーサルの実行中はスナップショットを書き出せません",
+    snapshot_written_back: "スナップショットを更新しました: ",
+    snapshot_write_back_failed: "スナップショットを更新できませんでした: ",
     failed_to_open: "開けませんでした: ",
     top_level: "最上位に到達しました",
     entry_file_or_empty: "エントリはファイルまたは空のディレクトリです",
@@ -982,6 +1003,11 @@ const KO_UI: UiText = UiText {
     snapshot_temporary_failed: "다음 위치에 임시 스냅샷을 만들 수 없습니다: ",
     snapshot_write_failed: "스냅샷을 쓸 수 없습니다: ",
     snapshot_install_failed: "스냅샷을 설치할 수 없습니다: ",
+    snapshot_exported_to: "스냅샷을 내보냈습니다: ",
+    snapshot_export_failed: "스냅샷을 내보낼 수 없습니다: ",
+    snapshot_export_scan_running: "탐색이 실행 중일 때는 스냅샷을 내보낼 수 없습니다",
+    snapshot_written_back: "스냅샷을 업데이트했습니다: ",
+    snapshot_write_back_failed: "스냅샷을 업데이트할 수 없습니다: ",
     failed_to_open: "열지 못했습니다: ",
     top_level: "최상위에 도달했습니다",
     entry_file_or_empty: "항목이 파일이거나 빈 디렉터리입니다",
@@ -1045,6 +1071,11 @@ const ZH_UI: UiText = UiText {
     snapshot_temporary_failed: "无法在目标旁创建临时快照: ",
     snapshot_write_failed: "无法写入快照: ",
     snapshot_install_failed: "无法安装快照: ",
+    snapshot_exported_to: "快照已导出到: ",
+    snapshot_export_failed: "无法导出快照: ",
+    snapshot_export_scan_running: "遍历进行中无法导出快照",
+    snapshot_written_back: "快照已更新: ",
+    snapshot_write_back_failed: "无法更新快照: ",
     failed_to_open: "无法打开: ",
     top_level: "已到达顶层",
     entry_file_or_empty: "条目是文件或空目录",
@@ -1108,6 +1139,11 @@ const DE_UI: UiText = UiText {
     snapshot_temporary_failed: "Temporärer Snapshot konnte nicht neben diesem Pfad erstellt werden: ",
     snapshot_write_failed: "Snapshot konnte nicht geschrieben werden: ",
     snapshot_install_failed: "Snapshot konnte nicht installiert werden: ",
+    snapshot_exported_to: "Snapshot exportiert nach: ",
+    snapshot_export_failed: "Snapshot konnte nicht exportiert werden: ",
+    snapshot_export_scan_running: "Snapshot-Export während eines laufenden Durchlaufs nicht möglich",
+    snapshot_written_back: "Snapshot aktualisiert: ",
+    snapshot_write_back_failed: "Snapshot konnte nicht aktualisiert werden: ",
     failed_to_open: "Öffnen fehlgeschlagen: ",
     top_level: "Oberste Ebene erreicht",
     entry_file_or_empty: "Eintrag ist eine Datei oder ein leeres Verzeichnis",
